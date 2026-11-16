@@ -7,7 +7,7 @@ current_punchline = ""
 
 # read the file immediately before building the gui
 # since you moved randomJokes.txt to the same folder, this will now work perfectly
-file = open("randomJokes.txt", "r", encoding="utf-8") 
+file = open("Assessment 1 - Skills Portfolio/02-AlexaJoke/randomJokes.txt", "r", encoding="utf-8")
 jokes_list = file.readlines()
 file.close()
 
