@@ -3,16 +3,18 @@ import random # random numbers, operators, and floating items
 import time # tracks live quiz timer
 import math # powers smooth sine-wave color throbbing
 
-THEMES = { # pitch black and pitch white palettes
+THEMES = { # pitch black and pitch white mathematical palettes
     "dark": {
-        "bg": "#000000", "card": "#111111", "border": "#262626", "fg": "#FFFFFF",
-        "muted": "#A3A3A3", "btn": "#1F1F1F", "btn_hover": "#333333",
-        "entry_bg": "#000000", "good": "#22C55E", "bad": "#EF4444", "bar_bg": "#262626"
+        "bg": "#000000", "grid": "#121212", "axis": "#1F2937", "card": "#0D0D0D",
+        "border": "#262626", "fg": "#FFFFFF", "muted": "#A3A3A3", "accent": "#38BDF8",
+        "btn": "#1F1F1F", "btn_hover": "#333333", "entry_bg": "#000000",
+        "good": "#22C55E", "bad": "#EF4444", "bar_bg": "#262626"
     },
     "light": {
-        "bg": "#FFFFFF", "card": "#F5F5F5", "border": "#D4D4D4", "fg": "#000000",
-        "muted": "#525252", "btn": "#E5E5E5", "btn_hover": "#D4D4D4",
-        "entry_bg": "#FFFFFF", "good": "#16A34A", "bad": "#DC2626", "bar_bg": "#E5E5E5"
+        "bg": "#FFFFFF", "grid": "#EFEFEF", "axis": "#D4D4D4", "card": "#F8FAFC",
+        "border": "#CBD5E1", "fg": "#000000", "muted": "#525252", "accent": "#0284C7",
+        "btn": "#E5E5E5", "btn_hover": "#D4D4D4", "entry_bg": "#FFFFFF",
+        "good": "#16A34A", "bad": "#DC2626", "bar_bg": "#E5E5E5"
     }
 }
 
@@ -37,12 +39,13 @@ FLOATING_POOL = { # variables and equations grouped by difficulty tier
     4: ["∞", "∫", "∇", "∫x²dx", "e^(iπ)+1", "lim x→∞", "98421−45129", "∂y/∂x", "∑1/n²", "∀x∈ℝ"]
 }
 
-class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and ui
+class MathsQuizApp: # encapsulates arcade quiz state, graph grid, throbbing equations, and ui
     def __init__(self, root):
         self.root = root
         self.root.title("Maths Quiz Arcade")
         self.root.geometry("680x620")
         self.root.minsize(540, 560) # allows resizing and full-screen cleanly
+        self.set_math_icon() # applies custom generated pi window icon
         self.is_fullscreen = False
         self.root.bind("<F11>", self.toggle_fullscreen)
         self.root.bind("<Escape>", lambda e: self.set_fullscreen(False))
@@ -53,21 +56,48 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
         self.timer_job = None
         self.start_time = 0.0
         self.elapsed_sec = 0
+        self.last_w = 680 # tracks canvas width for instant fullscreen rescaling
+        self.last_h = 620 # tracks canvas height for instant fullscreen rescaling
+        self.current_title = "∑  MATHS QUIZ ARCADE  π"
 
-        # persistent full-window canvas for bouncing & throbbing equations
+        # persistent full-window canvas for coordinate grid and throbbing equations
         self.bg_canvas = tk.Canvas(self.root, bg=self.c("bg"), highlightthickness=0)
         self.bg_canvas.place(x=0, y=0, relwidth=1, relheight=1)
+        self.bg_canvas.bind("<Configure>", self.on_resize) # rescales equations and title on resize
+
         self.symbols = []
+        self.draw_grid(680, 620)
         self.init_floating_symbols()
         self.animate_symbols()
 
-        # responsive topbar and centered card container floating above canvas
+        # responsive topbar, fullscreen hero banner, and centered card
         self.topbar = tk.Frame(self.root, bg=self.c("bg"))
         self.topbar.place(x=0, y=0, relwidth=1, height=54)
+
+        self.hero_frame = tk.Frame(self.root, bg=self.c("bg")) # shown centered above box only in fullscreen/wide mode
+        self.hero_title = tk.Label(self.hero_frame, text=self.current_title, font=("Cambria Math", 26, "bold"), bg=self.c("bg"), fg=self.c("fg"))
+        self.hero_title.pack()
+        self.hero_sub = tk.Label(self.hero_frame, text="f(x) = a ± b   •   ARITHMETIC CHALLENGE ENGINE", font=("Consolas", 10, "bold"), bg=self.c("bg"), fg=self.c("accent"))
+        self.hero_sub.pack()
+
         self.ui_frame = tk.Frame(self.root, bg=self.c("card"), padx=28, pady=24, highlightthickness=2, highlightbackground=self.c("border"))
-        self.ui_frame.place(relx=0.5, rely=0.53, anchor="center", width=480)
+        self.ui_frame.place(relx=0.5, rely=0.55, anchor="center", width=490)
 
         self.displayMenu()
+
+    def set_math_icon(self): # generates a crisp 32x32 mathematical pi icon with zero external files
+        icon = tk.PhotoImage(width=32, height=32)
+        icon.put("#0F172A", to=(0, 0, 32, 32)) # dark navy background
+        icon.put("#38BDF8", to=(0, 0, 32, 2)) # cyan top border
+        icon.put("#38BDF8", to=(0, 30, 32, 32)) # cyan bottom border
+        icon.put("#38BDF8", to=(0, 0, 2, 32)) # cyan left border
+        icon.put("#38BDF8", to=(30, 0, 32, 32)) # cyan right border
+        icon.put("#FFFFFF", to=(6, 8, 26, 11)) # pi top bar
+        icon.put("#FFFFFF", to=(10, 11, 13, 25)) # pi left leg
+        icon.put("#FFFFFF", to=(19, 11, 22, 24)) # pi right leg
+        icon.put("#FFFFFF", to=(22, 22, 25, 25)) # pi right foot curve
+        self.icon_ref = icon # keeps reference so tkinter does not garbage collect icon
+        self.root.iconphoto(True, self.icon_ref)
 
     def c(self, key): # fetches active theme color
         return THEMES[self.theme_mode][key]
@@ -84,6 +114,46 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
     def set_fullscreen(self, state): # sets fullscreen state safely
         self.is_fullscreen = state
         self.root.attributes("-fullscreen", state)
+        self.update_title_layout(self.bg_canvas.winfo_width())
+
+    def draw_grid(self, w, h): # draws subtle cartesian graph paper grid behind floating equations
+        self.bg_canvas.delete("grid")
+        step = 45
+        for x in range(0, w, step):
+            self.bg_canvas.create_line(x, 0, x, h, fill=self.c("grid"), tags="grid")
+        for y in range(0, h, step):
+            self.bg_canvas.create_line(0, y, w, y, fill=self.c("grid"), tags="grid")
+        self.bg_canvas.create_line(w // 2, 0, w // 2, h, fill=self.c("axis"), width=1.5, tags="grid") # y-axis
+        self.bg_canvas.create_line(0, h // 2, w, h // 2, fill=self.c("axis"), width=1.5, tags="grid") # x-axis
+        self.bg_canvas.tag_lower("grid") # keeps grid strictly behind floating equations
+
+    def on_resize(self, event): # rescales floating equations across full screen and updates title layout
+        w, h = max(event.width, 540), max(event.height, 560)
+        if abs(w - self.last_w) > 40 or abs(h - self.last_h) > 40:
+            sx = w / max(self.last_w, 1)
+            sy = h / max(self.last_h, 1)
+            for s in self.symbols: # spreads equations proportionally across entire new screen
+                s[1] = min(max(s[1] * sx, 35), w - 35)
+                s[2] = min(max(s[2] * sy, 65), h - 25)
+            self.last_w, self.last_h = w, h
+            self.draw_grid(w, h)
+        self.update_title_layout(w)
+
+    def update_title_layout(self, w): # puts title in corner when windowed or centered above box in fullscreen/wide
+        is_wide = self.is_fullscreen or w >= 950
+        if hasattr(self, "corner_title") and self.corner_title.winfo_exists():
+            if is_wide:
+                self.corner_title.pack_forget() # hides corner title in fullscreen
+                self.hero_frame.configure(bg=self.c("bg"))
+                self.hero_title.configure(text=self.current_title, bg=self.c("bg"), fg=self.c("fg"))
+                self.hero_sub.configure(bg=self.c("bg"), fg=self.c("accent"))
+                self.hero_frame.place(relx=0.5, rely=0.14, anchor="center") # places title centered above box
+                self.ui_frame.place(relx=0.5, rely=0.56, anchor="center", width=500)
+            else:
+                self.hero_frame.place_forget() # hides hero title when windowed
+                if not self.corner_title.winfo_ismapped():
+                    self.corner_title.pack(side="left", padx=20, pady=12)
+                self.ui_frame.place(relx=0.5, rely=0.54, anchor="center", width=480)
 
     def init_floating_symbols(self): # spawns 44 color-tiered variables and equations
         for tier in (1, 2, 3, 4):
@@ -93,11 +163,11 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
                 dy = random.choice([-2.2, -1.6, -1.1, 1.1, 1.6, 2.2])
                 text = random.choice(FLOATING_POOL[tier])
                 size = random.randint(12, 20) if len(text) > 2 else random.randint(18, 28)
-                phase = random.uniform(0, 6.28) # offsets throbbing so items pulse organically
-                item = self.bg_canvas.create_text(x, y, text=text, font=("Segoe UI", size, "bold"))
+                phase = random.uniform(0, 6.28)
+                item = self.bg_canvas.create_text(x, y, text=text, font=("Cambria Math", size, "bold"))
                 self.symbols.append([item, x, y, dx, dy, tier, phase])
 
-    def animate_symbols(self): # bounces items off window edges and throbs their tier color
+    def animate_symbols(self): # bounces items off current window edges and throbs their tier color
         w = max(self.bg_canvas.winfo_width(), 640)
         h = max(self.bg_canvas.winfo_height(), 580)
         for s in self.symbols:
@@ -113,9 +183,10 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
             self.bg_canvas.itemconfig(s[0], fill=self.lerp_hex(light_rgb, dark_rgb, t))
         self.root.after(30, self.animate_symbols)
 
-    def toggle_theme(self): # switches pitch black/white mode and redraws current screen
+    def toggle_theme(self): # switches pitch black/white mode and redraws grid + current screen
         self.theme_mode = "light" if self.theme_mode == "dark" else "dark"
         self.bg_canvas.configure(bg=self.c("bg"))
+        self.draw_grid(max(self.bg_canvas.winfo_width(), 640), max(self.bg_canvas.winfo_height(), 580))
         if self.screen == "menu": self.displayMenu()
         elif self.screen == "problem": self.displayProblem()
         elif self.screen == "results": self.displayResults()
@@ -134,10 +205,13 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
                          relief="flat", font=("Segoe UI", 10, "bold"), pady=7, cursor="hand2", bd=0)
 
     def build_topbar(self, title_text): # renders header bar with fullscreen and day/night toggles
-        tk.Label(self.topbar, text=title_text, font=("Segoe UI", 12, "bold"), bg=self.c("bg"), fg=self.c("fg")).pack(side="left", padx=20, pady=12)
+        self.current_title = title_text
+        self.corner_title = tk.Label(self.topbar, text=title_text, font=("Cambria Math", 13, "bold"), bg=self.c("bg"), fg=self.c("fg"))
+        self.corner_title.pack(side="left", padx=20, pady=12)
         toggle_lbl = "☀ Pitch White" if self.theme_mode == "dark" else "🌙 Pitch Black"
         self.make_btn(self.topbar, toggle_lbl, self.toggle_theme, width=13).pack(side="right", padx=(6, 16), pady=10)
         self.make_btn(self.topbar, "⛶ F11", self.toggle_fullscreen, width=7).pack(side="right", pady=10)
+        self.update_title_layout(self.bg_canvas.winfo_width())
 
     def draw_gd_face(self, parent, level, size=44): # draws geometry dash inspired difficulty face
         color = DIFF_META[level]["color"]
@@ -182,9 +256,9 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
         self.best_streak = 0
         self.correct_count = 0
 
-        self.build_topbar("MATHS QUIZ ARCADE")
-        tk.Label(self.ui_frame, text="DIFFICULTY LEVEL", font=("Segoe UI", 16, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=(0, 2))
-        tk.Label(self.ui_frame, text="10 Questions  •  10 pts (1st try)  •  5 pts (2nd try)", font=("Segoe UI", 9), bg=self.c("card"), fg=self.c("muted")).pack(pady=(0, 16))
+        self.build_topbar("∑  MATHS QUIZ ARCADE  π")
+        tk.Label(self.ui_frame, text="DIFFICULTY LEVEL", font=("Cambria Math", 18, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=(0, 2))
+        tk.Label(self.ui_frame, text="10 Questions  •  10 pts (1st try)  •  5 pts (2nd try)", font=("Consolas", 9), bg=self.c("card"), fg=self.c("muted")).pack(pady=(0, 16))
 
         for lvl in (1, 2, 3, 4):
             row = tk.Frame(self.ui_frame, bg=self.c("card"))
@@ -193,140 +267,4 @@ class MathsQuizApp: # encapsulates arcade quiz state, throbbing background, and 
             meta = DIFF_META[lvl]
             txt = f"{meta['name']}  —  {meta['desc']}"
             btn_fg = "#000000" if lvl in (1, 2) else "#FFFFFF"
-            self.make_btn(row, txt, lambda l=lvl: self.startQuiz(l), bg=meta["color"], fg=btn_fg, width=32).pack(side="left", fill="x", expand=True)
-
-    def startQuiz(self, level): # starts quiz session and live timer
-        self.difficulty = level
-        self.start_time = time.time()
-        self.elapsed_sec = 0
-        self.nextQuestion()
-
-    def randomInt(self, level): # returns random integer matching chosen difficulty
-        if level == 1: return random.randint(1, 9)
-        if level == 2: return random.randint(10, 99)
-        if level == 3: return random.randint(1000, 9999)
-        return random.randint(10000, 99999) # demon 5-digit range
-
-    def decideOperation(self): # randomly returns '+' or '-' char
-        return random.choice(['+', '-'])
-
-    def update_timer(self): # refreshes elapsed timer every 500ms
-        if self.screen != "problem": return
-        self.elapsed_sec = int(time.time() - self.start_time)
-        if hasattr(self, "timer_lbl") and self.timer_lbl.winfo_exists():
-            self.timer_lbl.config(text=f"⏱ {self.elapsed_sec}s")
-        self.timer_job = self.root.after(500, self.update_timer)
-
-    def nextQuestion(self): # advances question counter or ends quiz after 10
-        if self.question_num >= 10:
-            self.displayResults()
-            return
-        self.question_num += 1
-        self.attempt = 1
-        self.num1 = self.randomInt(self.difficulty)
-        self.num2 = self.randomInt(self.difficulty)
-        self.op = self.decideOperation()
-        self.correct_ans = self.num1 + self.num2 if self.op == '+' else self.num1 - self.num2
-        self.displayProblem()
-
-    def displayProblem(self): # renders active question card, face badge, and progress bar
-        self.screen = "problem"
-        self.clearScreen()
-        diff_color = DIFF_META[self.difficulty]["color"]
-        self.ui_frame.configure(highlightbackground=diff_color)
-        self.build_topbar(f"QUESTION {self.question_num} OF 10  •  {DIFF_META[self.difficulty]['name'].upper()}")
-
-        hud = tk.Frame(self.ui_frame, bg=self.c("card"))
-        hud.pack(fill="x", pady=(0, 8))
-        self.draw_gd_face(hud, self.difficulty, size=38).pack(side="left")
-        tk.Label(hud, text=f"Score: {self.score}   |   🔥 {self.streak}x", font=("Segoe UI", 10, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(side="left", padx=12)
-        self.timer_lbl = tk.Label(hud, text=f"⏱ {self.elapsed_sec}s", font=("Segoe UI", 10, "bold"), bg=self.c("card"), fg=self.c("muted"))
-        self.timer_lbl.pack(side="right")
-
-        prog = tk.Canvas(self.ui_frame, height=8, bg=self.c("bar_bg"), highlightthickness=0)
-        prog.pack(fill="x", pady=(0, 18))
-        prog.create_rectangle(0, 0, int(420 * (self.question_num / 10)), 8, fill=diff_color, width=0)
-
-        tk.Label(self.ui_frame, text=f"{self.num1}  {self.op}  {self.num2}  =", font=("Segoe UI", 26, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=(10, 16))
-
-        self.answer_entry = tk.Entry(self.ui_frame, font=("Segoe UI", 16, "bold"), justify="center",
-                                     bg=self.c("entry_bg"), fg=self.c("fg"), insertbackground=self.c("fg"),
-                                     relief="flat", highlightthickness=1, highlightbackground=self.c("border"))
-        self.answer_entry.pack(pady=8, ipady=6, fill="x", padx=40)
-        self.answer_entry.focus()
-        self.answer_entry.bind("<Return>", lambda e: self.checkInput())
-
-        btn_fg = "#000000" if self.difficulty in (1, 2) else "#FFFFFF"
-        self.submit_btn = self.make_btn(self.ui_frame, "Submit Answer", self.checkInput, bg=diff_color, fg=btn_fg, width=20)
-        self.submit_btn.pack(pady=12)
-
-        self.feedback_lbl = tk.Label(self.ui_frame, text="", font=("Segoe UI", 10, "bold"), bg=self.c("card"), fg=self.c("muted"))
-        self.feedback_lbl.pack(pady=4)
-
-        if self.timer_job: self.root.after_cancel(self.timer_job)
-        self.update_timer()
-
-    def checkInput(self): # validates integer input before grading
-        try:
-            user_ans = int(self.answer_entry.get().strip())
-        except ValueError:
-            self.feedback_lbl.config(text="Enter a valid whole number.", fg=self.c("bad"))
-            return
-        self.isCorrect(user_ans, self.correct_ans)
-
-    def isCorrect(self, user_ans, correct_ans): # grades answer, flashes border, manages 2 attempts
-        if user_ans == correct_ans:
-            points = 10 if self.attempt == 1 else 5
-            self.score += points
-            self.correct_count += 1
-            self.streak += 1
-            self.best_streak = max(self.best_streak, self.streak)
-            self.ui_frame.config(highlightbackground=self.c("good"))
-            self.feedback_lbl.config(text=f"✔ Correct! +{points} points", fg=self.c("good"))
-            self.submit_btn.config(state="disabled")
-            self.root.after(750, self.nextQuestion)
-        elif self.attempt == 1:
-            self.attempt = 2
-            self.streak = 0
-            self.ui_frame.config(highlightbackground=self.c("bad"))
-            self.answer_entry.delete(0, tk.END)
-            self.feedback_lbl.config(text="✘ Incorrect! One more try for 5 points.", fg=self.c("bad"))
-        else:
-            self.streak = 0
-            self.ui_frame.config(highlightbackground=self.c("bad"))
-            self.feedback_lbl.config(text=f"✘ Out of tries! Answer was {correct_ans}.", fg=self.c("bad"))
-            self.submit_btn.config(state="disabled")
-            self.root.after(1050, self.nextQuestion)
-
-    def displayResults(self): # renders final score, grade, stats, and replay button
-        self.screen = "results"
-        if self.timer_job:
-            self.root.after_cancel(self.timer_job)
-            self.timer_job = None
-        self.clearScreen()
-
-        if self.score > 90: grade = "A+"
-        elif self.score >= 80: grade = "A"
-        elif self.score >= 70: grade = "B"
-        elif self.score >= 60: grade = "C"
-        elif self.score >= 50: grade = "D"
-        else: grade = "F"
-
-        diff_color = DIFF_META[self.difficulty]["color"]
-        self.ui_frame.configure(highlightbackground=diff_color)
-        self.build_topbar("QUIZ COMPLETE")
-
-        self.draw_gd_face(self.ui_frame, self.difficulty, size=52).pack(pady=(0, 6))
-        tk.Label(self.ui_frame, text=f"RANK: {grade}", font=("Segoe UI", 26, "bold"), bg=self.c("card"), fg=diff_color).pack()
-        tk.Label(self.ui_frame, text=f"Final Score: {self.score} / 100", font=("Segoe UI", 14, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=4)
-        tk.Label(self.ui_frame, text=f"Accuracy: {self.correct_count}/10   •   Best Streak: {self.best_streak}x   •   Time: {self.elapsed_sec}s",
-                 font=("Segoe UI", 9), bg=self.c("card"), fg=self.c("muted")).pack(pady=(4, 18))
-
-        btn_fg = "#000000" if self.difficulty in (1, 2) else "#FFFFFF"
-        self.make_btn(self.ui_frame, "Play Again", self.displayMenu, bg=diff_color, fg=btn_fg, width=22).pack(pady=5)
-        self.make_btn(self.ui_frame, "Quit", self.root.destroy, width=22).pack(pady=5)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    MathsQuizApp(root)
-    root.mainloop()
+            self.make_btn(row, txt, lambda l=lvl: self.startQuiz(l), bg=meta["color"], fg=btn_fg, width=32).

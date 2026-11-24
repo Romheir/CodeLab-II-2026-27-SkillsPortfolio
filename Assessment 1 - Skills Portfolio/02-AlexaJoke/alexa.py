@@ -1,6 +1,6 @@
 import tkinter as tk # standard gui library
 from tkinter import messagebox # favorites popup dialog
-import random # shuffles jokes and toy physics
+import random # shuffles jokes and balloon physics
 import os # dynamic file path handling
 import math # powers jester bell bounce and equalizer waves
 import threading # plays sound effects without freezing gui
@@ -23,9 +23,9 @@ THEMES = { # vibrant midnight circus and big top day palettes
     }
 }
 
-TOY_COLORS = ["#FF2E63", "#FACC15", "#00F5D4", "#9B5DE5", "#FF7B00", "#38BDF8", "#A3E635"] # vibrant circus toy colors
+BALLOON_COLORS = ["#FF2E63", "#FACC15", "#00F5D4", "#9B5DE5", "#FF7B00", "#38BDF8", "#A3E635"] # vibrant circus balloon colors
 
-class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and joke logic
+class AlexaJokeApp: # encapsulates circus jester assistant, poppable balloons, and joke logic
     def __init__(self, root):
         self.root = root
         self.root.title("Alexa's Circus Joke Tent")
@@ -44,21 +44,22 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
         self.favorites = []
         self.current_full_joke = ""
         self.punchline = ""
+        self.punchline_revealed = False # tracks if current punchline is already shown
         self.jokes_told = 0
         self.laughs = 0
-        self.popped_count = 0 # tracks popped balloons and toys
+        self.popped_count = 0 # tracks popped balloons
         self.is_speaking = False
         self.phase = 0.0
         self.type_job = None
         self.last_w = 720 # tracks window width for fullscreen redistribution
 
-        # full-window interactive canvas for floating balloons and toys
+        # full-window interactive canvas for floating balloons
         self.bg_canvas = tk.Canvas(self.root, bg=self.c("bg"), highlightthickness=0, cursor="crosshair")
         self.bg_canvas.place(x=0, y=0, relwidth=1, relheight=1)
-        self.bg_canvas.bind("<Button-1>", self.on_canvas_click) # detects clicks on floating toys
-        self.bg_canvas.bind("<Configure>", self.on_resize) # spreads toys when entering fullscreen
+        self.bg_canvas.bind("<Button-1>", self.on_canvas_click) # detects clicks on balloons
+        self.bg_canvas.bind("<Configure>", self.on_resize) # spreads balloons when entering fullscreen
 
-        self.toys = [] # active floating toys
+        self.balloons = [] # active floating balloons
         self.bursts = [] # pop confetti and text animations
 
         # topbar and centered circus stage card floating above canvas
@@ -69,7 +70,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
 
         self.build_ui()
         self.apply_theme()
-        for _ in range(14): self.spawn_toy(from_edge=False) # spawns 14 initial interactive toys
+        for _ in range(14): self.spawn_balloon(from_edge=False) # spawns 14 initial balloons
         self.animate_loop()
 
     def c(self, key): # fetches active theme color
@@ -98,47 +99,41 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
         except FileNotFoundError:
             return ["Error?randomJokes.txt not found."]
 
-    def on_resize(self, event): # spreads toys across full width when maximized or fullscreened
+    def on_resize(self, event): # spreads balloons across full width when maximized or fullscreened
         if abs(event.width - self.last_w) > 120:
             scale = event.width / max(self.last_w, 1)
-            for t in self.toys:
-                t["x"] = min(max(t["x"] * scale, 40), event.width - 40)
+            for b in self.balloons:
+                b["x"] = min(max(b["x"] * scale, 40), event.width - 40)
             self.last_w = event.width
 
-    def spawn_toy(self, from_edge=True): # creates a clickable balloon or juggling ball
+    def spawn_balloon(self, from_edge=True): # creates a clickable circus balloon with string
         w = max(self.bg_canvas.winfo_width(), 700)
         h = max(self.bg_canvas.winfo_height(), 640)
         x = random.randint(45, w - 45)
         y = h + 40 if from_edge else random.randint(80, h - 60)
         dx = random.uniform(-1.2, 1.2)
         dy = random.uniform(-2.0, -0.9)
-        kind = random.choice(["balloon", "balloon", "ball"]) # mostly balloons plus juggling balls
-        color = random.choice(TOY_COLORS)
+        color = random.choice(BALLOON_COLORS)
         r = random.randint(20, 28)
 
-        if kind == "balloon": # draws balloon body, shine highlight, and string
-            string_id = self.bg_canvas.create_line(x, y+r, x, y+r+30, fill=self.c("muted"), width=2)
-            body_id = self.bg_canvas.create_oval(x-r, y-r-4, x+r, y+r+4, fill=color, outline="#FFFFFF", width=2)
-            shine_id = self.bg_canvas.create_oval(x-r+6, y-r+2, x-r+12, y-r+10, fill="#FFFFFF", outline="")
-            items = [string_id, body_id, shine_id]
-        else: # draws striped circus juggling ball
-            body_id = self.bg_canvas.create_oval(x-r, y-r, x+r, y+r, fill=color, outline="#FFFFFF", width=2)
-            stripe_id = self.bg_canvas.create_arc(x-r, y-r, x+r, y+r, start=30, extent=120, fill="#FFFFFF", outline="")
-            items = [body_id, stripe_id]
+        string_id = self.bg_canvas.create_line(x, y+r+4, x, y+r+34, fill=self.c("muted"), width=2)
+        body_id = self.bg_canvas.create_oval(x-r, y-r-4, x+r, y+r+4, fill=color, outline="#FFFFFF", width=2)
+        shine_id = self.bg_canvas.create_oval(x-r+6, y-r+2, x-r+12, y-r+10, fill="#FFFFFF", outline="")
+        self.balloons.append({"x": x, "y": y, "dx": dx, "dy": dy, "r": r, "color": color, "items": [string_id, body_id, shine_id]})
 
-        self.toys.append({"kind": kind, "x": x, "y": y, "dx": dx, "dy": dy, "r": r, "color": color, "items": items})
-
-    def on_canvas_click(self, event): # checks if user clicked a floating toy to pop it
-        for t in self.toys[:]:
-            dist = math.hypot(event.x - t["x"], event.y - t["y"])
-            if dist <= t["r"] + 8:
-                for item in t["items"]: self.bg_canvas.delete(item)
-                self.toys.remove(t)
+    def on_canvas_click(self, event): # pops clicked balloon, reveals punchline if waiting, and respawns in 5s
+        for b in self.balloons[:]:
+            dist = math.hypot(event.x - b["x"], event.y - b["y"])
+            if dist <= b["r"] + 10:
+                for item in b["items"]: self.bg_canvas.delete(item)
+                self.balloons.remove(b)
                 self.popped_count += 1
                 self.update_counter()
-                self.spawn_burst(t["x"], t["y"], t["color"], "POP!")
+                self.spawn_burst(b["x"], b["y"], b["color"], "POP!")
                 self.play_sound([(900, 35), (450, 45)]) # quick pop sound
-                self.root.after(5000, lambda: self.spawn_toy(from_edge=True)) # regenerates 5 seconds later
+                if self.punchline and not self.punchline_revealed: # reveals punchline on balloon pop
+                    self.show_punchline()
+                self.root.after(5000, lambda: self.spawn_balloon(from_edge=True)) # regenerates 5 seconds later
                 break
 
     def spawn_burst(self, x, y, color, label=None): # spawns colorful confetti particles and optional pop text
@@ -147,7 +142,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
             self.bursts.append([txt, x, y, 0, -1.8, 22])
         for _ in range(10):
             dx, dy = random.uniform(-4.0, 4.0), random.uniform(-4.0, 2.0)
-            c = random.choice(TOY_COLORS)
+            c = random.choice(BALLOON_COLORS)
             dot = self.bg_canvas.create_oval(x-4, y-4, x+4, y+4, fill=c, outline="")
             self.bursts.append([dot, x, y, dx, dy, 26])
 
@@ -176,7 +171,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
         self.jester_canvas = tk.Canvas(self.ui_frame, width=460, height=130, highlightthickness=0)
         self.jester_canvas.pack(pady=(0, 4))
 
-        self.status_lbl = tk.Label(self.ui_frame, text="🎪 STEP RIGHT UP! CLICK BALLOONS TO POP THEM!", font=("Segoe UI", 8, "bold"))
+        self.status_lbl = tk.Label(self.ui_frame, text="🎪 STEP RIGHT UP! POP A BALLOON TO REVEAL THE PUNCHLINE!", font=("Segoe UI", 8, "bold"))
         self.status_lbl.pack(pady=(0, 8))
 
         # speech stage
@@ -234,6 +229,8 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
         for b in (self.view_fav_btn, self.quit_btn):
             b.orig_fg = self.c("fg")
             b.configure(bg=self.c("top_btn"), fg=self.c("fg"))
+        for b in self.balloons:
+            self.bg_canvas.itemconfig(b["items"][0], fill=self.c("muted"))
 
     def toggle_theme(self): # switches between midnight circus and big top day
         self.theme_mode = "light" if self.theme_mode == "dark" else "dark"
@@ -257,7 +254,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
             for i in range(6):
                 x = 230 + side * (70 + i * 24)
                 amp = random.randint(14, 42) if self.is_speaking else int(7 + 5 * math.sin(self.phase + i))
-                col = TOY_COLORS[i % len(TOY_COLORS)]
+                col = BALLOON_COLORS[i % len(BALLOON_COLORS)]
                 cv.create_line(x, 72 - amp, x, 72 + amp, fill=col, width=6, capstyle="round")
 
         # 3-point jester hat with bouncing golden bells
@@ -275,26 +272,22 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
         cv.create_oval(cx-7, cy+1, cx+7, cy+15, fill="#FF2E63", outline="#000000") # clown nose
         cv.create_arc(cx-16, cy+6, cx+16, cy+26, start=200, extent=140, style="arc", width=3, outline="#FF2E63")
 
-    def animate_loop(self): # unified animation loop for toys, bursts, and jester mascot
+    def animate_loop(self): # unified animation loop for balloons, bursts, and jester mascot
         w = max(self.bg_canvas.winfo_width(), 700)
         h = max(self.bg_canvas.winfo_height(), 640)
 
-        for t in self.toys: # moves balloons & balls smoothly across full screen
-            t["x"] += t["dx"]
-            t["y"] += t["dy"]
-            if t["x"] < 30 or t["x"] > w - 30: t["dx"] *= -1
-            if t["y"] < -50: # wraps back to bottom at a fresh random full-width x
-                t["y"] = h + 45
-                t["x"] = random.randint(45, w - 45)
+        for b in self.balloons: # moves balloons smoothly across full screen
+            b["x"] += b["dx"]
+            b["y"] += b["dy"]
+            if b["x"] < 30 or b["x"] > w - 30: b["dx"] *= -1
+            if b["y"] < -50: # wraps back to bottom at a fresh random full-width x
+                b["y"] = h + 45
+                b["x"] = random.randint(45, w - 45)
 
-            x, y, r = t["x"], t["y"], t["r"]
-            if t["kind"] == "balloon":
-                self.bg_canvas.coords(t["items"][0], x, y+r, x, y+r+30)
-                self.bg_canvas.coords(t["items"][1], x-r, y-r-4, x+r, y+r+4)
-                self.bg_canvas.coords(t["items"][2], x-r+6, y-r+2, x-r+12, y-r+10)
-            else:
-                self.bg_canvas.coords(t["items"][0], x-r, y-r, x+r, y+r)
-                self.bg_canvas.coords(t["items"][1], x-r, y-r, x+r, y+r)
+            x, y, r = b["x"], b["y"], b["r"]
+            self.bg_canvas.coords(b["items"][0], x, y+r+4, x, y+r+34)
+            self.bg_canvas.coords(b["items"][1], x-r, y-r-4, x+r, y+r+4)
+            self.bg_canvas.coords(b["items"][2], x-r+6, y-r+2, x-r+12, y-r+10)
 
         for b in self.bursts[:]: # animates and cleans up pop confetti
             b[1] += b[3]
@@ -317,7 +310,8 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
             self.type_job = self.root.after(18, lambda: self.type_text(label, full_text, idx + 1))
         else:
             self.is_speaking = False
-            self.status_lbl.config(text="🎪 READY! PRESS ENTER FOR PUNCHLINE OR POP BALLOONS!")
+            if not self.punchline_revealed:
+                self.status_lbl.config(text="🎪 READY! PRESS ENTER OR POP A BALLOON FOR THE PUNCHLINE!")
 
     def tell_joke(self): # pulls non-repeating joke, plays circus chime, and animates setup
         if self.type_job: self.root.after_cancel(self.type_job)
@@ -327,6 +321,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
 
         self.current_full_joke = self.queue.pop()
         setup, self.punchline = self.current_full_joke.split("?", 1)
+        self.punchline_revealed = False # resets flag so popping a balloon reveals punchline
         self.jokes_told += 1
         self.update_counter()
         self.punch_lbl.config(text="")
@@ -338,6 +333,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, clickable toys, and 
     def show_punchline(self): # reveals punchline with celebratory sound
         if not self.punchline: return
         if self.type_job: self.root.after_cancel(self.type_job)
+        self.punchline_revealed = True
         self.is_speaking = True
         self.status_lbl.config(text="🎉 BA-DUM-TSS!")
         self.play_sound([(784, 55), (1046, 110)])
