@@ -267,4 +267,140 @@ class MathsQuizApp: # encapsulates arcade quiz state, graph grid, throbbing equa
             meta = DIFF_META[lvl]
             txt = f"{meta['name']}  —  {meta['desc']}"
             btn_fg = "#000000" if lvl in (1, 2) else "#FFFFFF"
-            self.make_btn(row, txt, lambda l=lvl: self.startQuiz(l), bg=meta["color"], fg=btn_fg, width=32).
+            self.make_btn(row, txt, lambda l=lvl: self.startQuiz(l), bg=meta["color"], fg=btn_fg, width=32).pack(side="left", fill="x", expand=True)
+
+    def startQuiz(self, level): # starts quiz session and live timer
+        self.difficulty = level
+        self.start_time = time.time()
+        self.elapsed_sec = 0
+        self.nextQuestion()
+
+    def randomInt(self, level): # returns random integer matching chosen difficulty
+        if level == 1: return random.randint(1, 9)
+        if level == 2: return random.randint(10, 99)
+        if level == 3: return random.randint(1000, 9999)
+        return random.randint(10000, 99999) # demon 5-digit range
+
+    def decideOperation(self): # randomly returns '+' or '-' char
+        return random.choice(['+', '-'])
+
+    def update_timer(self): # refreshes elapsed timer every 500ms
+        if self.screen != "problem": return
+        self.elapsed_sec = int(time.time() - self.start_time)
+        if hasattr(self, "timer_lbl") and self.timer_lbl.winfo_exists():
+            self.timer_lbl.config(text=f"⏱ {self.elapsed_sec}s")
+        self.timer_job = self.root.after(500, self.update_timer)
+
+    def nextQuestion(self): # advances question counter or ends quiz after 10
+        if self.question_num >= 10:
+            self.displayResults()
+            return
+        self.question_num += 1
+        self.attempt = 1
+        self.num1 = self.randomInt(self.difficulty)
+        self.num2 = self.randomInt(self.difficulty)
+        self.op = self.decideOperation()
+        self.correct_ans = self.num1 + self.num2 if self.op == '+' else self.num1 - self.num2
+        self.displayProblem()
+
+    def displayProblem(self): # renders active question card, face badge, and progress bar
+        self.screen = "problem"
+        self.clearScreen()
+        diff_color = DIFF_META[self.difficulty]["color"]
+        self.ui_frame.configure(highlightbackground=diff_color)
+        self.build_topbar(f"Q{self.question_num}/10  •  {DIFF_META[self.difficulty]['name'].upper()}")
+
+        hud = tk.Frame(self.ui_frame, bg=self.c("card"))
+        hud.pack(fill="x", pady=(0, 8))
+        self.draw_gd_face(hud, self.difficulty, size=38).pack(side="left")
+        tk.Label(hud, text=f"Score: {self.score}   |   🔥 {self.streak}x", font=("Consolas", 10, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(side="left", padx=12)
+        self.timer_lbl = tk.Label(hud, text=f"⏱ {self.elapsed_sec}s", font=("Consolas", 10, "bold"), bg=self.c("card"), fg=self.c("muted"))
+        self.timer_lbl.pack(side="right")
+
+        prog = tk.Canvas(self.ui_frame, height=8, bg=self.c("bar_bg"), highlightthickness=0)
+        prog.pack(fill="x", pady=(0, 18))
+        prog.create_rectangle(0, 0, int(430 * (self.question_num / 10)), 8, fill=diff_color, width=0)
+
+        tk.Label(self.ui_frame, text=f"{self.num1}  {self.op}  {self.num2}  =", font=("Cambria Math", 28, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=(10, 16))
+
+        self.answer_entry = tk.Entry(self.ui_frame, font=("Consolas", 16, "bold"), justify="center",
+                                     bg=self.c("entry_bg"), fg=self.c("fg"), insertbackground=self.c("fg"),
+                                     relief="flat", highlightthickness=1, highlightbackground=self.c("border"))
+        self.answer_entry.pack(pady=8, ipady=6, fill="x", padx=40)
+        self.answer_entry.focus()
+        self.answer_entry.bind("<Return>", lambda e: self.checkInput())
+
+        btn_fg = "#000000" if self.difficulty in (1, 2) else "#FFFFFF"
+        self.submit_btn = self.make_btn(self.ui_frame, "Submit Answer", self.checkInput, bg=diff_color, fg=btn_fg, width=20)
+        self.submit_btn.pack(pady=12)
+
+        self.feedback_lbl = tk.Label(self.ui_frame, text="", font=("Segoe UI", 10, "bold"), bg=self.c("card"), fg=self.c("muted"))
+        self.feedback_lbl.pack(pady=4)
+
+        if self.timer_job: self.root.after_cancel(self.timer_job)
+        self.update_timer()
+
+    def checkInput(self): # validates integer input before grading
+        try:
+            user_ans = int(self.answer_entry.get().strip())
+        except ValueError:
+            self.feedback_lbl.config(text="Enter a valid whole number.", fg=self.c("bad"))
+            return
+        self.isCorrect(user_ans, self.correct_ans)
+
+    def isCorrect(self, user_ans, correct_ans): # grades answer, flashes border, manages 2 attempts
+        if user_ans == correct_ans:
+            points = 10 if self.attempt == 1 else 5
+            self.score += points
+            self.correct_count += 1
+            self.streak += 1
+            self.best_streak = max(self.best_streak, self.streak)
+            self.ui_frame.config(highlightbackground=self.c("good"))
+            self.feedback_lbl.config(text=f"✔ Correct! +{points} points", fg=self.c("good"))
+            self.submit_btn.config(state="disabled")
+            self.root.after(750, self.nextQuestion)
+        elif self.attempt == 1:
+            self.attempt = 2
+            self.streak = 0
+            self.ui_frame.config(highlightbackground=self.c("bad"))
+            self.answer_entry.delete(0, tk.END)
+            self.feedback_lbl.config(text="✘ Incorrect! One more try for 5 points.", fg=self.c("bad"))
+        else:
+            self.streak = 0
+            self.ui_frame.config(highlightbackground=self.c("bad"))
+            self.feedback_lbl.config(text=f"✘ Out of tries! Answer was {correct_ans}.", fg=self.c("bad"))
+            self.submit_btn.config(state="disabled")
+            self.root.after(1050, self.nextQuestion)
+
+    def displayResults(self): # renders final score, grade, stats, and replay button
+        self.screen = "results"
+        if self.timer_job:
+            self.root.after_cancel(self.timer_job)
+            self.timer_job = None
+        self.clearScreen()
+
+        if self.score > 90: grade = "A+"
+        elif self.score >= 80: grade = "A"
+        elif self.score >= 70: grade = "B"
+        elif self.score >= 60: grade = "C"
+        elif self.score >= 50: grade = "D"
+        else: grade = "F"
+
+        diff_color = DIFF_META[self.difficulty]["color"]
+        self.ui_frame.configure(highlightbackground=diff_color)
+        self.build_topbar("∑  QUIZ COMPLETE  π")
+
+        self.draw_gd_face(self.ui_frame, self.difficulty, size=52).pack(pady=(0, 6))
+        tk.Label(self.ui_frame, text=f"RANK: {grade}", font=("Cambria Math", 26, "bold"), bg=self.c("card"), fg=diff_color).pack()
+        tk.Label(self.ui_frame, text=f"Final Score: {self.score} / 100", font=("Consolas", 14, "bold"), bg=self.c("card"), fg=self.c("fg")).pack(pady=4)
+        tk.Label(self.ui_frame, text=f"Accuracy: {self.correct_count}/10   •   Best Streak: {self.best_streak}x   •   Time: {self.elapsed_sec}s",
+                 font=("Consolas", 9), bg=self.c("card"), fg=self.c("muted")).pack(pady=(4, 18))
+
+        btn_fg = "#000000" if self.difficulty in (1, 2) else "#FFFFFF"
+        self.make_btn(self.ui_frame, "Play Again", self.displayMenu, bg=diff_color, fg=btn_fg, width=22).pack(pady=5)
+        self.make_btn(self.ui_frame, "Quit", self.root.destroy, width=22).pack(pady=5)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    MathsQuizApp(root)
+    root.mainloop()

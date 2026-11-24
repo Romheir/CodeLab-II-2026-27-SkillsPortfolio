@@ -31,6 +31,7 @@ class AlexaJokeApp: # encapsulates circus jester assistant, poppable balloons, a
         self.root.title("Alexa's Circus Joke Tent")
         self.root.geometry("720x660")
         self.root.minsize(560, 600) # fully resizable and fullscreen compatible
+        self.set_clown_icon() # applies custom generated clown window icon
         self.is_fullscreen = False
         self.root.bind("<F11>", self.toggle_fullscreen)
         self.root.bind("<Escape>", lambda e: self.set_fullscreen(False))
@@ -72,6 +73,21 @@ class AlexaJokeApp: # encapsulates circus jester assistant, poppable balloons, a
         self.apply_theme()
         for _ in range(14): self.spawn_balloon(from_edge=False) # spawns 14 initial balloons
         self.animate_loop()
+
+    def set_clown_icon(self): # generates a crisp 32x32 circus clown icon with zero external files
+        icon = tk.PhotoImage(width=32, height=32)
+        icon.put("#120624", to=(0, 0, 32, 32)) # midnight circus background
+        icon.put("#FF2E63", to=(4, 4, 11, 13)) # left red jester puff
+        icon.put("#00F5D4", to=(21, 4, 28, 13)) # right teal jester puff
+        icon.put("#9B5DE5", to=(12, 2, 20, 10)) # center purple jester hat
+        icon.put("#FACC15", to=(14, 1, 18, 4)) # golden bell on top
+        icon.put("#FFFFFF", to=(7, 9, 25, 28)) # white clown face
+        icon.put("#000000", to=(10, 14, 13, 17)) # left eye
+        icon.put("#000000", to=(19, 14, 22, 17)) # right eye
+        icon.put("#FF2E63", to=(14, 17, 18, 21)) # red clown nose
+        icon.put("#FF2E63", to=(10, 23, 22, 25)) # clown smile
+        self.icon_ref = icon # keeps reference so tkinter does not garbage collect icon
+        self.root.iconphoto(True, self.icon_ref)
 
     def c(self, key): # fetches active theme color
         return THEMES[self.theme_mode][key]
